@@ -7,7 +7,7 @@ use futures::executor::block_on;
 use crate::error::{ApiResult};
 use crate::settings::Settings;
 use crate::fxa::{FxaInfo, FxaData};
-use crate::db::collections::Collections;
+use crate::db::collections::{Collections};
 
 pub struct Dbs {
     settings: Settings,

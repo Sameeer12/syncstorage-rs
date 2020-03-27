@@ -1,11 +1,11 @@
-use std::str::FromStr;
-use mysql_async::{self, params};
 use mysql_async::prelude::Queryable;
+use mysql_async::{self, params};
+use std::str::FromStr;
 
 use crate::db::collections::{Collection, Collections};
+use crate::db::{Bso, User};
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::settings::Settings;
-use crate::db::{User, Bso};
 
 #[derive(Clone)]
 pub struct MysqlDb {
@@ -38,14 +38,16 @@ impl MysqlDb {
                 uc.collection
             ",
                 (),
-            ).await.unwrap();
+            )
+            .await
+            .unwrap();
         match cursor
             .map_and_drop(|row| {
                 let id: u16 = row.get(0).unwrap();
                 // Only add "new" items
-                let collection_name:String = row.get(1).unwrap();
+                let collection_name: String = row.get(1).unwrap();
                 if base.get(&collection_name).is_none() {
-                    let new = Collection{
+                    let new = Collection {
                         collection: id,
                         name: collection_name.clone(),
                         last_modified: 0,
@@ -53,14 +55,14 @@ impl MysqlDb {
                     new_collections.set(&collection_name, new.clone());
                     base.set(&collection_name, new.clone());
                 }
-            }).await {
-                Ok(_) => {
-                    Ok(new_collections)
-                },
-                Err(e) => {
-                    Err(ApiErrorKind::Internal(format!("failed to get collections {}", e)).into())
-                }
+            })
+            .await
+        {
+            Ok(_) => Ok(new_collections),
+            Err(e) => {
+                Err(ApiErrorKind::Internal(format!("failed to get collections {}", e)).into())
             }
+        }
     }
 
     pub async fn get_user_ids(&self, bso_num: &u8) -> ApiResult<Vec<u64>> {
@@ -68,39 +70,51 @@ impl MysqlDb {
         // return the list if they're already specified in the options.
         if let Some(user) = self.settings.user.clone() {
             for uid in user.user_id {
-                results.push(u64::from_str(&uid).map_err(|e| ApiErrorKind::Internal(format!("Invalid UID option found {} {}", uid, e)))?);
+                results.push(u64::from_str(&uid).map_err(|e| {
+                    ApiErrorKind::Internal(format!("Invalid UID option found {} {}", uid, e))
+                })?);
             }
-            return Ok(results)
+            return Ok(results);
         }
 
         let sql = "SELECT DISTINCT userid FROM :bso";
-        let conn: mysql_async::Conn = match self
-            .pool
-            .get_conn()
-            .await {
-                Ok(v) => v,
-                Err(e) => {
-                    return Err(ApiErrorKind::Internal(format!("Could not get connection: {}", e)).into())
-                }
-            };
-        let cursor = match conn.prep_exec(sql, params!{
-            "bso" => bso_num
-        }).await {
+        let conn: mysql_async::Conn = match self.pool.get_conn().await {
             Ok(v) => v,
             Err(e) => {
-                return Err(ApiErrorKind::Internal(format!("Could not get users: {}",e)).into())
+                return Err(
+                    ApiErrorKind::Internal(format!("Could not get connection: {}", e)).into(),
+                )
             }
         };
-        match cursor.map_and_drop(|row| {
-            let uid:String = mysql_async::from_row(row);
-            if let Ok(v) = u64::from_str(&uid) {
-                v
-            } else {
-                panic!("Invalid UID found in database {}", uid);
+        let cursor = match conn
+            .prep_exec(
+                sql,
+                params! {
+                    "bso" => bso_num
+                },
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(ApiErrorKind::Internal(format!("Could not get users: {}", e)).into())
             }
-        }).await {
-            Ok(_) => {Ok(results)}
-            Err(e)=> {Err(ApiErrorKind::Internal(format!("Bad UID found in database {}", e)).into())}
+        };
+        match cursor
+            .map_and_drop(|row| {
+                let uid: String = mysql_async::from_row(row);
+                if let Ok(v) = u64::from_str(&uid) {
+                    v
+                } else {
+                    panic!("Invalid UID found in database {}", uid);
+                }
+            })
+            .await
+        {
+            Ok(_) => Ok(results),
+            Err(e) => {
+                Err(ApiErrorKind::Internal(format!("Bad UID found in database {}", e)).into())
+            }
         }
     }
 
@@ -115,32 +129,40 @@ impl MysqlDb {
         WHERE
             user_collections.userid = :userid and collections.collectionid = user_collections.collection;
         ";
-        let conn: mysql_async::Conn = match self
-            .pool
-            .get_conn()
-            .await {
-                Ok(v) => v,
-                Err(e) => {
-                    return Err(ApiErrorKind::Internal(format!("Could not get connection: {}", e)).into())
-                }
-            };
-        let cursor = match conn.prep_exec(bso_sql, params!{
-            "bso_num" => bso_num,
-            "user_id" => user.uid,
-        }).await {
+        let conn: mysql_async::Conn = match self.pool.get_conn().await {
             Ok(v) => v,
             Err(e) => {
-                return Err(ApiErrorKind::Internal(format!("Could not get users: {}",e)).into())
+                return Err(
+                    ApiErrorKind::Internal(format!("Could not get connection: {}", e)).into(),
+                )
             }
         };
-        let (_cursor, result) = cursor.map_and_drop(|row| {
-            let (name, collection, last_modified) = mysql_async::from_row(row);
-            Collection {
-                name,
-                collection,
-                last_modified,
+        let cursor = match conn
+            .prep_exec(
+                bso_sql,
+                params! {
+                    "bso_num" => bso_num,
+                    "user_id" => user.uid,
+                },
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(ApiErrorKind::Internal(format!("Could not get users: {}", e)).into())
             }
-        }).await.unwrap();
+        };
+        let (_cursor, result) = cursor
+            .map_and_drop(|row| {
+                let (name, collection, last_modified) = mysql_async::from_row(row);
+                Collection {
+                    name,
+                    collection,
+                    last_modified,
+                }
+            })
+            .await
+            .unwrap();
 
         Ok(result)
     }
@@ -160,37 +182,45 @@ impl MysqlDb {
                 and bso.ttl > unix_timestamp()
         ORDER BY
             bso.collection, bso.id";
-        let conn: mysql_async::Conn = match self
-            .pool
-            .get_conn()
-            .await {
-                Ok(v) => v,
-                Err(e) => {
-                    return Err(ApiErrorKind::Internal(format!("Could not get connection: {}", e)).into())
-                }
-            };
-        let cursor = match conn.prep_exec(bso_sql, params!{
-            "bso_num" => bso_num,
-            "user_id" => user.uid,
-        }).await {
+        let conn: mysql_async::Conn = match self.pool.get_conn().await {
             Ok(v) => v,
             Err(e) => {
-                return Err(ApiErrorKind::Internal(format!("Could not get users: {}",e)).into())
+                return Err(
+                    ApiErrorKind::Internal(format!("Could not get connection: {}", e)).into(),
+                )
             }
         };
-        let (_cursor, result) = cursor.map_and_drop(|row| {
-            let (col_name, col_id, bso_id, expiry, modify, payload, sort_index) = mysql_async::from_row(row);
-            Bso{
-                col_name,
-                col_id,
-                bso_id,
-                expiry,
-                modify,
-                payload,
-                sort_index
+        let cursor = match conn
+            .prep_exec(
+                bso_sql,
+                params! {
+                    "bso_num" => bso_num,
+                    "user_id" => user.uid,
+                },
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(ApiErrorKind::Internal(format!("Could not get users: {}", e)).into())
             }
-
-        }).await.unwrap();
+        };
+        let (_cursor, result) = cursor
+            .map_and_drop(|row| {
+                let (col_name, col_id, bso_id, expiry, modify, payload, sort_index) =
+                    mysql_async::from_row(row);
+                Bso {
+                    col_name,
+                    col_id,
+                    bso_id,
+                    expiry,
+                    modify,
+                    payload,
+                    sort_index,
+                }
+            })
+            .await
+            .unwrap();
 
         Ok(result)
     }

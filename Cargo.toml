@@ -43,7 +43,7 @@ mime = "0.3"
 mozsvc-common = "0.1"
 num_cpus = "1.12"
 # must match what's used by googleapis-raw
-protobuf = "2.11"
+protobuf = "2.12"
 openssl ="0.10"
 rand = "0.7"
 regex = "1.3"
