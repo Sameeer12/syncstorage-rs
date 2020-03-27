@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use googleapis_raw::spanner::v1::{
     result_set::ResultSet,
-    spanner::{CreateSessionRequest, ExecuteSqlRequest, BeginTransactionRequest},
-    transaction::{TransactionOptions, TransactionSelector},
+    spanner::{CreateSessionRequest, ExecuteSqlRequest, BeginTransactionRequest, Session},
+    transaction::{TransactionOptions, TransactionOptions_ReadWrite, TransactionSelector},
     spanner_grpc::SpannerClient,
 };
 use grpcio::{
@@ -22,9 +22,9 @@ const MAX_MESSAGE_LEN: i32 = 104_857_600;
 #[derive(Clone)]
 pub struct Spanner {
     pub client: SpannerClient,
+    database_name: String,
 }
 
-/* Session related
 fn get_path(raw: &str) -> ApiResult<String> {
     let url = match url::Url::parse(raw){
         Ok(v) => v,
@@ -45,7 +45,7 @@ fn create_session(client: &SpannerClient, database_name: &str) -> Result<Session
     client.create_session_opt(&req, opt)
 }
 
-*/
+const SPANNER_ADDRESS: &str = "spanner.googleapis.com:443";
 
 impl Spanner {
     pub fn new(settings: &Settings) -> ApiResult<Self> {
@@ -53,38 +53,54 @@ impl Spanner {
             settings.dsns.mysql.is_none() {
                 return Err(ApiErrorKind::Internal("No DSNs set".to_owned()).into())
             }
-        let spanner_path = &settings.dsns.spanner.clone().unwrap();
-        // let database_name = get_path(&spanner_path).unwrap();
+        let creds = ChannelCredentials::google_default_credentials()?;
         let env = Arc::new(EnvBuilder::new().build());
-        let creds = ChannelCredentials::google_default_credentials().unwrap();
+        let spanner_path = &settings.dsns.spanner.clone().unwrap();
+        dbg!(&spanner_path);
+        let database_name = get_path(&spanner_path).unwrap();
+        dbg!(&database_name);
         let chan = ChannelBuilder::new(env.clone())
             .max_send_message_len(MAX_MESSAGE_LEN)
             .max_receive_message_len(MAX_MESSAGE_LEN)
-            .secure_connect(&spanner_path, creds);
+            .secure_connect(SPANNER_ADDRESS, creds);
 
         let client = SpannerClient::new(chan);
 
-        Ok(Self {client})
+        Ok(Self {client, database_name})
     }
 
     pub async fn transaction(&self, sql: &str) -> ApiResult<ResultSet> {
+        let session = create_session(&self.client, &self.database_name)?;
+
+        let mut meta = MetadataBuilder::new();
+        match meta.add_str("google-cloud-resource-prefix", &self.database_name) {
+            Ok(_) => {},
+            Err(e) => {
+                return Err(ApiErrorKind::Internal(format!("Could not add prefix meta {:?}", e)).into())
+            }
+        };
+        match meta.add_str("x-goog-api-client", "gcp-grpc-rs"){
+            Ok(_) => {},
+            Err(e) => {
+                return Err(ApiErrorKind::Internal(format!("Could not add client meta {:?}", e)).into())
+            }
+        };
+
+        /*
         let opts = TransactionOptions::new();
-        let mut req = BeginTransactionRequest::new();
-        let sreq = CreateSessionRequest::new();
-        let meta = MetadataBuilder::new();
-        let sopt = CallOption::default().headers(meta.build());
-        let session = self.client.create_session_opt(&sreq, sopt).unwrap();
-        req.set_session(session.name.clone());
-        req.set_options(opts);
+        opts.set_read_write(TransactionOperations_ReadWrite::new());
+        session.in_write_transaction = true;
+        let mut treq = BeginTransactionRequest::new();
+        treq.set_session(session.name.clone());
+        treq.set_options(opts);
 
-        let mut txn = self.client.begin_transaction(&req).unwrap();
-
+        let mut txn = self.client.begin_transaction(&treq)?;
         let mut txns = TransactionSelector::new();
         txns.set_id(txn.take_id());
-
+        */
         let mut sreq = ExecuteSqlRequest::new();
         sreq.set_session(session.name.clone());
-        sreq.set_transaction(txns);
+        // sreq.set_transaction(txns);
 
         sreq.set_sql(sql.to_owned());
         match self.client.execute_sql(&sreq) {
@@ -98,21 +114,21 @@ impl Spanner {
     pub async fn get_collections(&self) -> ApiResult<Collections> {
         let result = self.clone().transaction(
             "SELECT
-                DISTINCT uc.collection, cc.name,
+                DISTINCT uc.collection_id, cc.name,
             FROM
                 user_collections as uc,
                 collections as cc
             WHERE
-                uc.collection = cc.collectionid
+                uc.collection_id = cc.collection_id
             ORDER BY
-                uc.collection"
+                uc.collection_id"
         ).await?;
         // get the default base of collections (in case the original is missing them)
         let mut collections = Collections::default();
         // back fill with the values from the collection db table, which is our source
         // of truth.
         for row in result.get_rows() {
-            let id: u16 = u16::from_str(row.values[0].get_string_value()).unwrap();
+            let id: u16 = u16::from_str(row.values[0].get_string_value())?;
             let name:&str = row.values[1].get_string_value();
             if collections.get(name).is_none(){
                 collections.set(name,

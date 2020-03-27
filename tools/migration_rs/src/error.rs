@@ -9,6 +9,8 @@ use std::convert::From;
 use std::fmt;
 
 use failure::{Backtrace, Context, Fail};
+use grpcio;
+use mysql_async as mysql;
 use serde::{
     ser::{SerializeMap, SerializeSeq, Serializer},
     Serialize,
@@ -36,12 +38,6 @@ pub enum ApiErrorKind {
 impl ApiError {
     pub fn kind(&self) -> &ApiErrorKind {
         self.inner.get_context()
-    }
-}
-
-impl From<std::io::Error> for ApiError {
-    fn from(inner: std::io::Error) -> Self {
-        ApiErrorKind::Internal(inner.to_string()).into()
     }
 }
 
@@ -112,14 +108,18 @@ macro_rules! failure_boilerplate {
 
 failure_boilerplate!(ApiError, ApiErrorKind);
 
-/*
+
 macro_rules! from_error {
     ($from:ty, $to:ty, $to_kind:expr) => {
         impl From<$from> for $to {
             fn from(inner: $from) -> $to {
-                $to_kind(inner).into()
+                $to_kind(inner.to_string()).into()
             }
         }
     };
 }
-*/
+
+from_error!(std::io::Error, ApiError, ApiErrorKind::Internal);
+from_error!(grpcio::Error, ApiError, ApiErrorKind::Internal);
+from_error!(mysql::error::Error, ApiError, ApiErrorKind::Internal);
+from_error!(std::num::ParseIntError, ApiError, ApiErrorKind::Internal);

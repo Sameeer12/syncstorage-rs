@@ -1,6 +1,7 @@
 use mysql_async::prelude::Queryable;
 use mysql_async::{self, params};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::db::collections::{Collection, Collections};
 use crate::db::{Bso, User};
@@ -10,19 +11,20 @@ use crate::settings::Settings;
 #[derive(Clone)]
 pub struct MysqlDb {
     settings: Settings,
-    pub pool: mysql_async::Pool,
+    pub pool: Arc<mysql_async::Pool>,
 }
 
 impl MysqlDb {
     pub fn new(settings: &Settings) -> ApiResult<Self> {
         let pool = mysql_async::Pool::new(settings.dsns.mysql.clone().unwrap());
-        Ok(Self {settings: settings.clone(), pool})
+        Ok(Self {settings: settings.clone(), pool: Arc::new(pool)})
     }
 
     // take the existing set of collections, return a list of any "new"
     // unrecognized collections.
     pub async fn merge_collections(&self, base: &mut Collections) -> ApiResult<Collections> {
-        let conn = self.pool.get_conn().await.unwrap();
+        let conn = self.pool.get_conn().await.expect("Couldn't get MySQL connection");
+        dbg!("Got connection...");
         let mut new_collections = Collections::empty();
 
         let cursor = conn

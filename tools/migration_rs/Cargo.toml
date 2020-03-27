@@ -11,8 +11,9 @@ csv="1.1"
 base64="0.12"
 hex="0.4"
 futures={version="0.3", features=["compat"]}
-# eventually use these
+# mysql_async is ... problematic
 mysql_async="0.22"
+#mysql="18.1"
 env_logger = "0.7"
 failure="0.1"
 googleapis-raw={version="0", path="../../vendor/mozilla-rust-sdk/googleapis-raw"}
@@ -33,3 +34,4 @@ slog-term = "2.5"
 time = "0.2.9"
 url="2.1"
 structopt="0.3"
+tokio="0.2"

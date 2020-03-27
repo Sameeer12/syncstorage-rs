@@ -25,6 +25,7 @@ pub struct Bso {
     sort_index: Option<u64>,
 }
 
+#[derive(Debug)]
 pub struct User {
     uid: u64,
     fxa_data: FxaData,

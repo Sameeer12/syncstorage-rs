@@ -6,14 +6,14 @@ use crate::db::Dbs;
 use crate::error::ApiResult;
 use crate::settings::Settings;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Collection {
     pub name: String,
     pub collection: u16,
     pub last_modified: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Collections {
     by_name: HashMap<String, Collection>,
 }
@@ -59,12 +59,15 @@ impl Collections {
         }
     }
 
-    pub fn new(_settings: &Settings, dbs: &Dbs) -> ApiResult<Collections> {
+    pub async fn new(_settings: &Settings, dbs: &Dbs) -> ApiResult<Collections> {
         let mysql = &dbs.mysql;
         let span = dbs.spanner.clone();
-        let mut collections = block_on(span.get_collections()).unwrap();
-        let new_collections = block_on(mysql.merge_collections(&mut collections)).unwrap();
-        block_on(span.add_new_collections(new_collections)).unwrap();
+        debug!("    Fetching spanner collections...");
+        let mut collections = span.get_collections().await.unwrap();
+        debug!("    Fetching mysql collections...{:?}", collections);
+        let new_collections = mysql.merge_collections(&mut collections).await.unwrap();
+        debug!("    Reconciling collections...");
+        span.add_new_collections(new_collections).await.unwrap();
         Ok(collections)
     }
 
