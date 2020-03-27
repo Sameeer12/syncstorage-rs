@@ -12,7 +12,8 @@ mod logging;
 mod settings;
 mod fxa;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let settings = settings::Settings::from_args();
 
     // TODO: set logging level
