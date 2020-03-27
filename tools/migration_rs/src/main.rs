@@ -33,7 +33,7 @@ async fn main() {
     let fxa = fxa::FxaInfo::new(&settings).unwrap();
     // reconcile collections
     debug!("Fetching collections...");
-    let collections = block_on(db::collections::Collections::new(&settings, &dbs)).unwrap();
+    let collections = db::collections::Collections::new(&settings, &dbs).await.unwrap();
     dbg!("here");
     // let users = dbs.get_users(&settings, &fxa)?.await;
     let mut start_bso = &settings.start_bso.unwrap_or(0);
