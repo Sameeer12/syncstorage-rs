@@ -1096,7 +1096,7 @@ impl SpannerDb {
     pub fn encode_next_offset(
         &self,
         sort: Sorting,
-        offset: i64,
+        offset: u64,
         timestamp: Option<i64>,
         modifieds: Vec<i64>,
     ) -> Option<String> {
@@ -1108,7 +1108,7 @@ impl SpannerDb {
                 // Use a simple numeric offset for sortindex ordering.
                 return Some(
                     Offset {
-                        offset: offset + modifieds.len() as i64,
+                        offset: offset as i64 + modifieds.len() as i64,
                         timestamp: None,
                     }
                     .to_string(),
@@ -1163,7 +1163,7 @@ impl SpannerDb {
         let next_offset = if limit >= 0 && bsos.len() > limit as usize {
             bsos.pop();
             let modifieds: Vec<i64> = bsos.iter().map(|r| r.modified.as_i64()).collect();
-            self.encode_next_offset(sort, offset, timestamp.map(|t| t.as_i64()), modifieds)
+            self.encode_next_offset(sort, offset.try_into().unwrap(), timestamp.map(|t| t.as_i64()), modifieds)
         } else {
             None
         };
@@ -1205,7 +1205,7 @@ impl SpannerDb {
         let next_offset = if limit >= 0 && ids.len() > limit as usize {
             ids.pop();
             modifieds.pop();
-            self.encode_next_offset(sort, offset, timestamp.map(|t| t.as_i64()), modifieds)
+            self.encode_next_offset(sort, offset.try_into().unwrap(), timestamp.map(|t| t.as_i64()), modifieds)
         } else {
             None
         };
