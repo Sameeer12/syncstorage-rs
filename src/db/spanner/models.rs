@@ -1081,7 +1081,7 @@ impl SpannerDb {
             // most databases) so we specify a max value with offset subtracted
             // to avoid overflow errors (that only occur w/ a FORCE_INDEX=
             // directive) OutOfRange: 400 int64 overflow: <INT64_MAX> + offset
-            query = format!("{} LIMIT {}", query, i64::max_value() - offset.offset);
+            query = format!("{} LIMIT {}", query, i64::max_value() - offset.offset as i64);
         };
 
         if let Some(offset) = offset {
@@ -1108,7 +1108,7 @@ impl SpannerDb {
                 // Use a simple numeric offset for sortindex ordering.
                 return Some(
                     Offset {
-                        offset: offset as i64 + modifieds.len() as i64,
+                        offset: offset + modifieds.len() as u64,
                         timestamp: None,
                     }
                     .to_string(),
